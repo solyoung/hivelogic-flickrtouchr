@@ -25,9 +25,10 @@ import cPickle
 import md5
 import sys
 import os
+import time
 
-API_KEY       = "e224418b91b4af4e8cdb0564716fa9bd"
-SHARED_SECRET = "7cddb9c9716501a0"
+API_KEY       = "d2c232d91c218c0c2a9a79bf24193b9d"
+SHARED_SECRET = "214e89bdb23881d7"
 
 #
 # Utility functions for dealing with flickr authentication
@@ -151,10 +152,156 @@ def flickrsign(url, token):
     return url
 
 #
+# Grab a photo's raw exif xml from the server and write to disk
+#
+def getrawexif(id, token, path):
+    try:
+        # Contruct a request to find the sizes
+        url  = "http://api.flickr.com/services/rest/?method=flickr.photos.getExif"
+        url += "&photo_id=" + id
+    
+        # Sign the request
+        url = flickrsign(url, token)
+    
+        # Make the request
+        response = urllib2.urlopen(url)
+        responseString = response.read()
+       
+		# Write the XML to path + id . xml
+        filename = path + "/" + id + "-exif.xml"
+        fh = open(filename, "w")
+        fh.write(responseString)
+        fh.close()
+
+        return filename
+    except:
+        print "Failed to retrieve exif for id " + id
+    
+
+#
+# Grab a photo's raw exif xml from the server and write to disk
+#
+def getrawexif(id, token, path):
+    try:
+        # Contruct a request to find the sizes
+        url  = "http://api.flickr.com/services/rest/?method=flickr.photos.getExif"
+        url += "&photo_id=" + id
+    
+        # Sign the request
+        url = flickrsign(url, token)
+    
+        # Make the request
+        response = urllib2.urlopen(url)
+        responseString = response.read()
+       
+		# Write the XML to path + id . xml
+        filename = path + "/" + id + "-exif.xml"
+        fh = open(filename, "w")
+        fh.write(responseString)
+        fh.close()
+
+        return filename
+    except:
+        print "Failed to retrieve exif for id " + id
+    
+
+#
+# Grab a photo's raw geo position xml from the server and write to disk
+#
+def getrawgeo(id, token, path):
+    try:
+        # Contruct a request to find the sizes
+        url  = "http://api.flickr.com/services/rest/?method=flickr.photos.geo.getLocation"
+        url += "&photo_id=" + id
+    
+        # Sign the request
+        url = flickrsign(url, token)
+    
+        # Make the request
+        response = urllib2.urlopen(url)
+        responseString = response.read()
+       
+		# Write the XML to path + id . xml
+        filename = path + "/" + id + "-geo.xml"
+        fh = open(filename, "w")
+        fh.write(responseString)
+        fh.close()
+
+        return filename
+    except:
+        print "Failed to retrieve geo for id " + id
+    
+
+#
+# Grab a photo's raw comment xml from the server and write to disk
+#
+def getrawcomments(id, token, path):
+    try:
+        # Contruct a request to find the sizes
+        url  = "http://api.flickr.com/services/rest/?method=flickr.photos.comments.getList"
+        url += "&photo_id=" + id
+    
+        # Sign the request
+        url = flickrsign(url, token)
+    
+        # Make the request
+        response = urllib2.urlopen(url)
+        responseString = response.read()
+       
+		# Write the XML to path + id . xml
+        filename = path + "/" + id + "-comments.xml"
+        fh = open(filename, "w")
+        fh.write(responseString)
+        fh.close()
+
+        return filename
+    except:
+        print "Failed to retrieve comments for id " + id
+    
+
+#
+# Grab a photo's raw metadata from the server and write to disk
+#
+def getrawmetadata(id, token, path):
+    try:
+        # Contruct a request to find the info
+        url  = "http://api.flickr.com/services/rest/?method=flickr.photos.getInfo"
+        url += "&photo_id=" + id
+    
+        # Sign the request
+        url = flickrsign(url, token)
+    
+        # Make the request
+        response = urllib2.urlopen(url)
+        responseString = response.read()
+        
+		# Write the XML to path + id . xml
+        filename = path + "/" + id + "-metadata.xml"
+        fh = open(filename, "w")
+        fh.write(responseString)
+        fh.close()
+
+        # Parse the XML
+        dom = xml.dom.minidom.parseString(responseString)
+
+        # Does the photo have comments?
+        commentcount = int(getText(dom.getElementsByTagName("comments")[0].childNodes))
+        if (commentcount > 0):
+          getrawcomments(id, token, path)
+
+        # Free the DOM memory
+        dom.unlink()
+
+        return filename
+    except:
+        print "Failed to retrieve metadata for id " + id
+    
+
+#
 # Grab the photo from the server
 #
-def getphoto(id, token, filename):
-    try:
+def getphoto(id, token, path):
+#    try:
         # Contruct a request to find the sizes
         url  = "http://api.flickr.com/services/rest/?method=flickr.photos.getSizes"
         url += "&photo_id=" + id
@@ -176,29 +323,136 @@ def getphoto(id, token, filename):
           imgurl = sizes[-1].getAttribute("source")
         else:
           print "Failed to get original for photo id " + id
-
+          return
 
         # Free the DOM memory
         dom.unlink()
 
-        # Grab the image file
+        # Make our local filename
+        filename = path + "/" + os.path.basename(imgurl)
+
+        # Grab the image file (we're not retrieving it yet, just getting details)
         response = urllib2.urlopen(imgurl)
+        remotesize = response.info().get('Content-Length')
+
+        # Skip a file that exists and is the same size
+        localsize = 0
+        if os.access(filename, os.R_OK):
+          localsize = os.stat(filename).st_size
+          print str(localsize) + " | " + str(remotesize)
+          if int(remotesize) == int(localsize):
+            print imgurl + " is in sync with " + filename + " (" + str(localsize) + " bytes)"
+            return filename
+
+        # Determined we don't have a sync'd image, really retrieve it
+        print imgurl + " (" + str(remotesize) + " bytes) -> " + filename + " (" + str(localsize) + " bytes)"
         data = response.read()
     
         # Save the file!
         fh = open(filename, "w")
         fh.write(data)
         fh.close()
+		
+        # Retrieve the photo's metadata
+        metadatafilename = getrawmetadata(id, token, path)
+
+        # Use the retrieved metadata
+        fh = open(metadatafilename, "r")
+
+        # Parse the XML
+        dom = xml.dom.minidom.parse(fh)
+
+        # Retrieve the timestamp
+        rawtimestamp = dom.getElementsByTagName("dates")[0].getAttribute("taken")
+        # time format from flickr:     2010-11-08 00:17:19
+        t = time.strptime(rawtimestamp, "%Y-%m-%d %H:%M:%S")
+        os.utime(filename,(time.mktime(t),time.mktime(t)))
+
+        # Free the DOM memory
+        dom.unlink()
+
+        return filename
+#    except:
+#        print "Failed to retrieve photo for id " + id
+    
+
+
+#
+# Grab a set's raw info xml from the server and write to disk
+#
+def getrawsetinfo(id, token, path):
+    try:
+        # Contruct a request to find the sizes
+        url  = "http://api.flickr.com/services/rest/?method=flickr.photosets.getInfo"
+        url += "&photo_id=" + id
+    
+        # Sign the request
+        url = flickrsign(url, token)
+    
+        # Make the request
+        response = urllib2.urlopen(url)
+        responseString = response.read()
+       
+		# Write the XML to path + id . xml
+        filename = path + "/" + id + "-setinfo.xml"
+        fh = open(filename, "w")
+        fh.write(responseString)
+        fh.close()
 
         return filename
     except:
-        print "Failed to retrieve photo id " + id
+        print "Failed to retrieve set info for id " + id
     
-######## Main Application ##########
-if __name__ == '__main__':
 
+#
+# Grab a set's raw comment xml from the server and write to disk
+#
+def getrawsetcomments(id, token, path):
+    try:
+        # Contruct a request to find the sizes
+        url  = "http://api.flickr.com/services/rest/?method=flickr.photosets.comments.getList"
+        url += "&photo_id=" + id
+    
+        # Sign the request
+        url = flickrsign(url, token)
+    
+        # Make the request
+        response = urllib2.urlopen(url)
+        responseString = response.read()
+       
+		# Write the XML to path + id . xml
+        filename = path + "/" + id + "-setcomments.xml"
+        fh = open(filename, "w")
+        fh.write(responseString)
+        fh.close()
+
+        return filename
+    except:
+        print "Failed to retrieve set comments for id " + id
+    
+
+######## Usage #####################
+def usage():
+    print "usage: flickrtouchr.py"
+    print "                       [-h This help section]"
+    print "                       [-d Directory parent to place Flickr sets in]"
+    print "                       [-m include Metadata retrieval (Flickr XML)]"
+    print "                       [-g include Geo position retrieval (Flickr XML)]"
+    print "                       [-x include eXif retrieval (Flickr XML)]"
+
+
+
+
+
+######## Main Application ##########
+def main(argv):
     # The first, and only argument needs to be a directory
     try:
+        opts, args = getopt.getopt(argv, "hg:d", ["help", "grammar="])
+    except getopt.GetoptError:
+        usage()
+        sys.exit(2)
+
         os.chdir(sys.argv[1])
     except:
         print "usage: %s directory" % sys.argv[0] 
@@ -260,8 +514,10 @@ if __name__ == '__main__':
     urls.append( (url, "Favourites") )
 
     # Time to get the photos
-    inodes = {}
+    urlnum = 0
     for (url , dir) in urls:
+        urlnum = urlnum + 1
+
         # Create the directory
         try:
             os.makedirs(dir)
@@ -286,29 +542,31 @@ if __name__ == '__main__':
 
             # Get the total
             pages = int(dom.getElementsByTagName("photo")[0].parentNode.getAttribute("pages"))
+			
+			#reset the pic counter
+            picnum = 0
 
             # Grab the photos
             for photo in dom.getElementsByTagName("photo"):
-                # Tell the user we're grabbing the file
-                print photo.getAttribute("title").encode("utf8") + " ... in set ... " + dir
+                picnum = picnum + 1
 
                 # Grab the id
                 photoid = photo.getAttribute("id")
-
-                # The target
-                target = dir + "/" + photoid + ".jpg"
-
-                # Skip files that exist
-                if os.access(target, os.R_OK):
-                    inodes[photoid] = target
-                    continue
-                
-                # Look it up in our dictionary of inodes first
-                if photoid in inodes and inodes[photoid] and os.access(inodes[photoid], os.R_OK):
-                    # woo, we have it already, use a hard-link
-                    os.link(inodes[photoid], target)
-                else:
-                    inodes[photoid] = getphoto(photo.getAttribute("id"), config["token"], target)
-
+				
+                # Grab the name (title)
+                phototitle = photo.getAttribute("title")
+				
+                # Let the user know what we're up to
+                print dir + " (set " + str(urlnum) + "/" + str(len(urls)) + ", page " + str(page) + "/" + str(pages) + ", pic " + str(picnum) + "/500) - Photo ID: " + str(photoid) + "..."
+				
+				# Retrieve it
+                getphoto(photo.getAttribute("id"), config["token"], dir)
+				
             # Move on the next page
             page = page + 1
+			
+			
+
+######## Command Options Grabber ###########
+if __name__ == '__main__':
+    main(sys.argv[1:])
